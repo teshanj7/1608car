@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Our Road Trip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     TOKENS — dusk highway palette
+     ============================================================ */
+  :root {
+    --sky-top:    #241046;
+    --sky-mid:    #7B2D6B;
+    --sky-low:    #E85D5D;
+    --sky-horizon:#FFB35C;
+    --sun:        #FFE29A;
+    --hill-far:   #4A2359;
+    --hill-near:  #2E1440;
+    --road:       #241E33;
+    --road-edge:  #3A3150;
+    --dash:       #FFD6A5;
+    --ink:        #150F21;
+    --cream:      #FFF3E4;
+    --pink:       #FF5D8F;
+    --mint:       #6FE3C4;
+
+    --font-hud: 'Press Start 2P', ui-monospace, monospace;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--ink);
+    font-family: var(--font-body);
+    color: var(--cream);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #stage {
+    position: relative;
+    width: 100%; height: 100%;
+    display: grid; place-items: center;
+  }
+
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position: absolute; inset: 0 0 auto 0;
+    padding: calc(14px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 0 calc(16px + env(safe-area-inset-left));
+    display: flex; flex-direction: column; gap: 10px;
+    pointer-events: none;
+    font-family: var(--font-hud);
+    font-size: 10px; line-height: 1.6;
+    text-shadow: 0 2px 0 rgba(0,0,0,.45);
+  }
+  #hud-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  #lives { letter-spacing: 2px; }
+  #dist { color: var(--sun); }
+
+  /* the route ribbon — landmarks as pins that light up */
+  #route {
+    position: relative; height: 4px; border-radius: 2px;
+    background: rgba(255,243,228,.18);
+    margin: 6px 2px 0;
+  }
+  #route-fill {
+    position: absolute; inset: 0 auto 0 0; width: 0%;
+    background: var(--sun); border-radius: 2px;
+    transition: width .25s linear;
+  }
+  .pin {
+    position: absolute; top: 50%; width: 10px; height: 10px;
+    margin: -5px 0 0 -5px; border-radius: 50%;
+    background: var(--ink); border: 2px solid rgba(255,243,228,.35);
+  }
+  .pin.done { background: var(--pink); border-color: var(--sun); }
+
+  /* toast shown when a polaroid is scooped up mid-drive */
+  #toast {
+    align-self: center;
+    padding: 8px 14px; border-radius: 999px;
+    background: rgba(21,15,33,.75); color: var(--sun);
+    font-size: 8px; letter-spacing: 1px;
+    opacity: 0; transform: translateY(-6px);
+    transition: opacity .25s ease, transform .25s ease;
+  }
+  #toast.show { opacity: 1; transform: none; }
+
+  /* ---------- Overlay cards ---------- */
+  #overlay {
+    position: absolute; inset: 0;
+    display: none; place-items: center;
+    padding: 20px;
+    background: radial-gradient(120% 100% at 50% 0%, rgba(36,16,70,.72), rgba(21,15,33,.94));
+    backdrop-filter: blur(3px);
+  }
+  #overlay.show { display: grid; }
+
+  .card {
+    width: min(520px, 100%);
+    max-height: 100%;
+    overflow-y: auto;
+    background: var(--cream);
+    color: var(--ink);
+    border-radius: 18px;
+    padding: 22px;
+    box-shadow: 0 18px 0 rgba(0,0,0,.35), 0 0 0 3px var(--ink);
+    animation: pop .32s cubic-bezier(.2,1.3,.4,1) both;
+  }
+  @keyframes pop { from { transform: translateY(14px) scale(.96); opacity: 0 } }
+
+  .eyebrow {
+    font-family: var(--font-hud); font-size: 9px;
+    color: var(--pink); letter-spacing: 1px; margin: 0 0 10px;
+  }
+  .card h2 { font-size: 26px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -.02em; }
+  .card p  { font-size: 15px; line-height: 1.55; margin: 0 0 14px; color: #4A4160; }
+  .card p.caption { font-style: italic; }
+
+  .photo {
+    width: 100%; aspect-ratio: 4/3;
+    border-radius: 12px; overflow: hidden;
+    background: repeating-linear-gradient(45deg, #E7DCC9 0 12px, #DFD2BC 12px 24px);
+    display: grid; place-items: center; text-align: center;
+    margin: 0 0 14px; border: 2px dashed #B9A98E;
+  }
+  .photo img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; }
+  .photo span {
+    font-family: var(--font-hud); font-size: 8px; color: #8C7B60;
+    line-height: 1.9; padding: 12px;
+  }
+
+  .choices { display: grid; gap: 9px; margin: 4px 0 0; }
+  button.choice, button.action {
+    font-family: var(--font-body); font-size: 15px; font-weight: 500;
+    text-align: left; cursor: pointer; touch-action: manipulation;
+    padding: 13px 15px; border-radius: 11px;
+    border: 2px solid var(--ink); background: #fff; color: var(--ink);
+    transition: transform .12s ease, background .12s ease;
+  }
+  button.choice:hover, button.action:hover { background: #FFE9F0; transform: translateY(-1px); }
+  button.choice:focus-visible, button.action:focus-visible { outline: 3px solid var(--pink); outline-offset: 2px; }
+  button.choice.right { background: var(--mint); }
+  button.choice.wrong { background: #FFC9C9; opacity: .8; }
+
+  button.action {
+    text-align: center; font-weight: 700; margin-top: 16px; width: 100%;
+    background: var(--pink); color: #fff; box-shadow: 0 4px 0 var(--ink);
+  }
+  button.action:hover { background: #FF7BA3; }
+  button.action:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+
+  .nudge { font-size: 14px; color: var(--pink); font-weight: 500; margin: 12px 0 0; min-height: 20px; }
+
+  /* ---------- How-to-play rules ---------- */
+  .rules { display: grid; gap: 12px; margin: 14px 0 4px; }
+  .rule { display: flex; gap: 12px; align-items: flex-start; font-size: 14.5px; line-height: 1.5; color: #4A4160; text-align: left; }
+  .rule .ico { font-size: 20px; line-height: 1.2; flex: none; }
+  .rule b { color: var(--ink); }
+
+  /* ---------- Poem ---------- */
+  .poem p {
+    font-size: 15.5px; line-height: 1.8; font-style: italic;
+    color: #4A4160; margin: 0 0 16px;
+  }
+  .poem p:last-child { margin-bottom: 4px; }
+
+  button.action.secondary {
+    background: #fff; color: var(--ink); margin-top: 10px;
+  }
+  button.action.secondary:hover { background: #FFE9F0; }
+
+  /* ---------- Photo album (finale) ---------- */
+  .album {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 8px; margin: 14px 0 4px;
+  }
+  .shot {
+    aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+    border: 2px solid var(--ink); padding: 0; background: #fff;
+    cursor: pointer; touch-action: manipulation;
+  }
+  .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .shot.locked {
+    display: grid; place-items: center;
+    background: #E7DCC9; color: #8C7B60;
+    font-family: var(--font-hud); font-size: 14px;
+    border-style: dashed; cursor: default;
+  }
+
+  /* ---------- Lightbox ---------- */
+  #lightbox {
+    position: fixed; inset: 0; z-index: 50;
+    display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; cursor: zoom-out;
+    padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+    background: rgba(21,15,33,.92);
+    backdrop-filter: blur(3px);
+  }
+  #lightbox.show { display: flex; }
+  #lightbox img {
+    display: block;
+    width: auto; height: auto;
+    max-width: min(100%, 560px);
+    max-height: 78vh;   /* fallback for older browsers */
+    max-height: 78dvh;  /* tracks the real visible height on mobile */
+    object-fit: contain;
+    border-radius: 12px;
+    box-shadow: 0 0 0 3px var(--cream), 0 24px 60px rgba(0,0,0,.5);
+    animation: pop .32s cubic-bezier(.2,1.3,.4,1) both;
+  }
+  .lb-hint {
+    font-family: var(--font-hud); font-size: 8px;
+    color: rgba(255,243,228,.7); letter-spacing: 1px;
+    margin: 0; text-align: center;
+  }
+
+  /* ---------- Title / finale ---------- */
+  .center { text-align: center; }
+  .center h1 {
+    font-family: var(--font-hud); font-size: 20px; line-height: 1.7;
+    margin: 0 0 16px; color: var(--ink);
+  }
+  .hint { font-family: var(--font-hud); font-size: 8px; color: #8C7B60; line-height: 2; }
+
+  @media (max-width: 480px) {
+    .card { padding: 18px; border-radius: 14px; }
+    .card h2 { font-size: 21px; }
+    .center h1 { font-size: 14px; }
+    #hud { font-size: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card, #lightbox img { animation: none; }
+    button.choice, button.action { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div id="hud-row">
+      <div id="lives">♥ ♥ ♥</div>
+      <div id="snaps">📷 0/0</div>
+      <div id="dist">0 m</div>
+    </div>
+    <div id="route"><div id="route-fill"></div></div>
+    <div id="toast"></div>
+  </div>
+
+  <div id="overlay"><div class="card" id="card"></div></div>
+  <div id="lightbox"><img alt="" /><p class="lb-hint">TAP ANYWHERE TO CLOSE</p></div>
+</div>
+
+<script>
+/* ================================================================
+   1. YOUR CONTENT — this is the only part you need to edit.
+
+   Each stop appears every STOP_EVERY metres. Drop your photos next
+   to this file and put the filename in `photo` (e.g. "kandy.jpg").
+   Leave photo as null to show a placeholder instead.
+   `answer` is the index (0, 1 or 2) of the correct option.
+   ================================================================ */
+
+// Metres between landmarks. STOPS.length × STOP_EVERY = total trip distance.
+// 5 stops × 200 m = a full kilometre.
+const STOP_EVERY = 200;
+
+const STOPS = [
+  {
+    name: "Where we met",
+    photo: "photos/Couple 1.JPG",
+    caption: "Kilometre zero. Everything after this is your fault.",
+    question: "What was I wearing the first time you saw me?",
+    options: ["The blue shirt", "Something you can't remember", "A questionable jacket"],
+    answer: 0,
+    reply: "Correct. You noticed. I knew it."
+  },
+  {
+    name: "Our first date",
+    photo: "photos/Couple 2.jpg",
+    caption: "Where I learned that 'I'm full' really means 'this is yours now'.",
+    question: "What was the food that you did not finish and wanted me to eat haha?",
+    options: ["Fries", "Chicken", "Rice"],
+    answer: 0,
+    reply: "Correct. Your leftovers are my love language."
+  },
+  {
+    name: "The trip",
+    photo: "photos/Couple 3.JPG",
+    caption: "One navigator, zero sense of direction, a whole group just following along.",
+    question: "What was a bad stupid decision I made on our trip with everyone?",
+    options: ["Leading everyone to a dead end", "Spilling the welcome drink", "Shouting in the pool"],
+    answer: 0,
+    reply: "In my defence, the dead end had a great view."
+  },
+  {
+    name: "That one argument",
+    photo: "photos/Couple 4.jpg",
+    caption: "The great speed debate. Still unresolved. (I was right.)",
+    question: "Did I go below the speed limit?",
+    options: ["No you are very fast", "No you drive so well and quick", "YES u are very slow"],
+    answer: [0, 1],   // either flattering answer counts
+    wrongs: { 2: "No you are wrong — I am very fast, like Lightning McQueen. ⚡ Kachow." },
+    reply: "Exactly. Kachow. ⚡"
+  },
+  {
+    name: "Today",
+    photo: "photos/Couple 5.jpg",
+    caption: "Same road, better driver.",
+    question: "Where are we going next?",
+    options: ["Somewhere with a beach", "Somewhere with mountains", "Wherever, as long as it's us"],
+    answer: 2,
+    reply: "Right answer. Always the right answer."
+  }
+];
+
+// The message on the final screen.
+const FINALE = {
+  title: "HAPPY GIRLFRIENDS' DAY",
+  body: "One kilometre of us, and it's still my favourite road. Thank you for every stop, every detour, and every fry you never finished. Here's to the next stretch. I love you.",
+  signoff: "Drive again",
+  poemButton: "Read a poem I wrote for you"
+};
+
+// The poem behind the button. Each inner array is one stanza.
+const POEM = {
+  title: "TO MY CO-DRIVER",
+  stanzas: [
+    [
+      "Of all the roads I've ever been on,",
+      "the best ones are the ones with you by my side;",
+      "you turn my traffic jams to happy times,",
+      "my grey skies into happy blue."
+    ],
+    [
+      "Time have been tough,",
+      "distance between us making it tough —",
+      "and I wish I could drive to you right now making it less tough,",
+      "to be by your side, making everything no more tough."
+    ],
+    [
+      "So here's my heart for you while my hands on ten and two,",
+      "wherever we may steer:",
+      "every trip is a road trip home",
+      "as long as you are near by my side."
+    ]
+  ]
+};
+
+/* ----------------------------------------------------------------
+   ART — optional sprite images.
+
+   Leave any `src` as null and that thing is drawn with code instead,
+   exactly as before. Point it at a PNG and the sprite takes over.
+   Nothing breaks if a file is missing: it just falls back and logs
+   a warning in the console.
+
+   Recommended free pack (CC0 — no attribution, no restrictions):
+   Kenney Pixel Vehicle Pack — https://www.kenney.nl/assets/pixel-vehicle-pack
+
+   `height`  – how tall to draw it, in game units (car is ~34 by default)
+   `dx`/`dy` – nudge it around, in game units
+   `behind`  – passengers: true = seated behind the bodywork (convertibles),
+               false = drawn over it (use for hardtops, reads as a window)
+   `includesWheels` – true if the car PNG already has wheels drawn on,
+               so the code doesn't add spinning ones on top
+   `sx,sy,sw,sh` – optional crop, for pulling one frame out of a spritesheet
+   ---------------------------------------------------------------- */
+
+const ART = {
+  car:       { src: "sprites/sports_red.png", height: 34, includesWheels: true, dx: 0, dy: 0 },
+  wheel:     { src: null, height: 16 },
+  driver:    { src: "sprites/man_convertible.png",   height: 18, dx: -10, dy: -13, behind: true },
+  passenger: { src: "sprites/woman_convertible.png", height: 18, dx: 5,   dy: -14, behind: true },
+  rock:      { src: "sprites/barrier.png", height: 16 },
+  cone:      { src: "sprites/sign_street.png", height: 38 }
+};
+
+/* ----------------------------------------------------------------
+   BONUS PHOTOS — these float along the road as polaroids.
+   Drive into one to add it to the album on the final screen.
+   ---------------------------------------------------------------- */
+const GALLERY = [
+  { src: "photos/Viduni 1.jpg" },
+  { src: "photos/Viduni 2.jpg" },
+  { src: "photos/Viduni 3.png" },
+  { src: "photos/Couple 6.png" },
+  { src: "photos/Couple 7.png" },
+  { src: "photos/Couple 8.jpg" }
+].map(g => {
+  g.ready = false;
+  g.img = new Image();
+  g.img.onload = () => { g.ready = true; };
+  g.img.src = g.src;
+  return g;
+});
+
+
+
+/* ================================================================
+   2. THE GAME — you shouldn't need to touch anything below.
+   ================================================================ */
+
+/* ---------- sprite loading ---------- */
+// Every entry in ART becomes a sprite object. Until (and unless) its image
+// loads, `ready` stays false and the drawing code uses its coded fallback.
+function loadSprite(cfg) {
+  const s = Object.assign({ ready: false, img: null, ratio: 1 }, cfg);
+  if (!cfg.src) return s;
+  const img = new Image();
+  img.onload = () => {
+    s.img = img;
+    if (s.sw == null) { s.sx = 0; s.sy = 0; s.sw = img.width; s.sh = img.height; }
+    s.ratio = s.sw / s.sh;
+    s.ready = true;
+  };
+  img.onerror = () => {
+    console.warn(`[road-trip] Couldn't load "${cfg.src}" — drawing that one with code instead.`);
+  };
+  img.src = cfg.src;
+  return s;
+}
+
+const SPR = {};
+for (const key in ART) SPR[key] = loadSprite(ART[key]);
+
+// Draw a sprite scaled to `height` game units, anchored at its bottom centre.
+function blit(s, cx, bottomY, heightUnits) {
+  const h = (heightUnits ?? s.height) * scale;
+  const w = h * s.ratio;
+  ctx.drawImage(s.img, s.sx, s.sy, s.sw, s.sh, cx - w / 2, bottomY - h, w, h);
+  return { w, h };
+}
+
+const cvs = document.getElementById('game');
+const ctx = cvs.getContext('2d');
+const overlay = document.getElementById('overlay');
+const card = document.getElementById('card');
+const livesEl = document.getElementById('lives');
+const snapsEl = document.getElementById('snaps');
+const toastEl = document.getElementById('toast');
+const distEl = document.getElementById('dist');
+const routeEl = document.getElementById('route');
+const routeFill = document.getElementById('route-fill');
+
+const PX_PER_M = 26;      // world pixels in one metre
+const GRAVITY = 2100;     // px/s²
+const JUMP_V = -720;      // px/s
+const START_SPEED = 260;  // px/s
+const MAX_SPEED = 520;    // the car keeps getting faster across the whole trip
+const TOTAL_M = STOPS.length * STOP_EVERY;
+
+let W = 0, H = 0, groundY = 0, scale = 1;
+
+const state = {
+  mode: 'title',      // title | driving | stop | quiz | finale
+  worldX: 0,          // px travelled
+  speed: START_SPEED,
+  lives: 3,
+  hearts: 0,
+  heartBank: 0,       // hearts collected while hurt; 3 of them = 1 life back
+  album: new Set(),   // GALLERY indices collected this run
+  stopIndex: 0,       // next landmark to reach
+  car: { y: 0, vy: 0, grounded: true, tilt: 0 },
+  obstacles: [],
+  pickups: [],
+  scenery: [],
+  invuln: 0,
+  shake: 0,
+  lastSpawn: 0,
+  t: 0
+};
+
+/* ---------- responsive canvas ---------- */
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = cvs.clientWidth; H = cvs.clientHeight;
+  cvs.width = W * dpr; cvs.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  scale = Math.max(0.72, Math.min(1.25, H / 520));
+  groundY = H * 0.78;
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ---------- route ribbon pins ---------- */
+STOPS.forEach((s, i) => {
+  const pin = document.createElement('div');
+  pin.className = 'pin';
+  pin.style.left = (((i + 1) * STOP_EVERY) / TOTAL_M * 100) + '%';
+  pin.dataset.i = i;
+  routeEl.appendChild(pin);
+});
+
+/* ---------- scenery seeds ---------- */
+function seedScenery() {
+  state.scenery = [];
+  for (let i = 0; i < 26; i++) {
+    state.scenery.push({
+      x: Math.random() * 2400,
+      layer: Math.random() < 0.5 ? 1 : 2,
+      kind: Math.random() < 0.55 ? 'palm' : 'post',
+      h: 40 + Math.random() * 45
+    });
+  }
+}
+seedScenery();
+
+/* ---------- input ---------- */
+function jump() {
+  if (state.mode !== 'driving') return;
+  if (state.car.grounded) {
+    state.car.vy = JUMP_V * scale;
+    state.car.grounded = false;
+  }
+}
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+    e.preventDefault();
+    if (state.mode === 'title') howToPlay();
+    else if (state.mode === 'howto') startDriving(true);
+    else jump();
+  }
+});
+cvs.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (state.mode === 'title') howToPlay();
+  else if (state.mode === 'howto') startDriving(true);
+  else jump();
+});
+
+/* ---------- spawning ---------- */
+function metresNow() { return state.worldX / PX_PER_M; }
+function nextStopMetres() { return (state.stopIndex + 1) * STOP_EVERY; }
+
+function maybeSpawn(dt) {
+  state.lastSpawn += dt;
+  const gap = 0.85 + Math.random() * 0.7;
+  if (state.lastSpawn < gap) return;
+
+  // keep a clear run-up to each landmark so arrivals never feel unfair
+  const toStop = nextStopMetres() - metresNow();
+  if (toStop < 9) return;
+
+  state.lastSpawn = 0;
+  if (Math.random() < 0.72) {
+    // sized to the sprites: the sign is tall and thin, the barrier low and wide
+    const tall = Math.random() < 0.35;
+    state.obstacles.push({
+      x: W + 40,
+      w: (tall ? 16 : 44) * scale,
+      h: (tall ? 38 : 16) * scale,
+      kind: tall ? 'cone' : 'rock'
+    });
+  } else {
+    // photos that aren't in the album and aren't already floating past
+    const onScreen = new Set(state.pickups.filter(p => p.type === 'polaroid').map(p => p.gi));
+    const remaining = GALLERY.map((_, i) => i).filter(i => !state.album.has(i) && !onScreen.has(i));
+    const usePhoto = remaining.length > 0 && Math.random() < 0.55;
+    state.pickups.push({
+      x: W + 40,
+      y: groundY - (70 + Math.random() * 60) * scale,
+      got: false,
+      bob: Math.random() * 6,
+      type: usePhoto ? 'polaroid' : 'heart',
+      gi: usePhoto ? remaining[Math.floor(Math.random() * remaining.length)] : -1
+    });
+  }
+}
+
+/* ---------- loop ---------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  state.t += dt;
+  if (state.mode === 'driving') update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+function update(dt) {
+  state.speed = Math.min(MAX_SPEED, state.speed + dt * 4);
+  const dx = state.speed * scale * dt;
+  state.worldX += dx;
+
+  // car physics
+  const c = state.car;
+  c.vy += GRAVITY * scale * dt;
+  c.y += c.vy * dt;
+  if (c.y >= 0) { c.y = 0; c.vy = 0; c.grounded = true; }
+  c.tilt = Math.max(-0.22, Math.min(0.22, c.vy / 2600));
+
+  if (state.invuln > 0) state.invuln -= dt;
+  if (state.shake > 0) state.shake -= dt;
+
+  maybeSpawn(dt);
+
+  const carX = W * 0.22;
+  const carW = 64 * scale, carH = 34 * scale;
+  const carTop = groundY + c.y - carH;
+
+  // obstacles
+  for (const o of state.obstacles) o.x -= dx;
+  state.obstacles = state.obstacles.filter(o => o.x + o.w > -20);
+  if (state.invuln <= 0) {
+    for (const o of state.obstacles) {
+      const hit = o.x < carX + carW * 0.82 && o.x + o.w > carX + carW * 0.12
+               && groundY - o.h < groundY + c.y - carH * 0.15;
+      if (hit) { takeHit(); break; }
+    }
+  }
+
+  // pickups
+  for (const p of state.pickups) p.x -= dx;
+  state.pickups = state.pickups.filter(p => p.x > -30 && !p.got);
+  for (const p of state.pickups) {
+    if (Math.abs(p.x - (carX + carW / 2)) < 34 * scale &&
+        Math.abs(p.y - (carTop + carH / 2)) < 42 * scale) {
+      p.got = true;
+      if (p.type === 'polaroid') {
+        state.album.add(p.gi);
+        toast('📷 PHOTO SAVED TO THE ALBUM');
+      } else {
+        state.hearts++;
+        if (state.lives < 3) {
+          state.heartBank++;
+          if (state.heartBank >= 3) {
+            state.heartBank = 0;
+            state.lives++;
+            toast('♥ LIFE RESTORED');
+          } else {
+            toast(`♥ ${3 - state.heartBank} MORE FOR A LIFE`);
+          }
+        }
+      }
+      updateHud();
+    }
+  }
+
+  // scenery scroll
+  for (const s of state.scenery) {
+    s.x -= dx * (s.layer === 1 ? 0.45 : 0.85);
+    if (s.x < -80) s.x = W + Math.random() * 500;
+  }
+
+  // arrival
+  if (metresNow() >= nextStopMetres()) {
+    state.worldX = nextStopMetres() * PX_PER_M;
+    showStop(state.stopIndex);
+  }
+  updateHud();
+}
+
+function takeHit() {
+  state.lives--;
+  state.invuln = 1.5;
+  state.shake = 0.35;
+  state.speed = START_SPEED;
+  state.obstacles = [];
+  updateHud();
+  if (state.lives <= 0) breakdown();
+}
+
+let toastTimer = 0;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1700);
+}
+
+function updateHud() {
+  livesEl.textContent = '♥ '.repeat(Math.max(0, state.lives)).trim() || '·';
+  snapsEl.textContent = `📷 ${state.album.size}/${GALLERY.length}`;
+  distEl.textContent = Math.floor(metresNow()) + ' m';
+  routeFill.style.width = Math.min(100, metresNow() / TOTAL_M * 100) + '%';
+  routeEl.querySelectorAll('.pin').forEach(p => {
+    p.classList.toggle('done', +p.dataset.i < state.stopIndex);
+  });
+}
+
+/* ================================================================
+   DRAWING
+   ================================================================ */
+function draw() {
+  ctx.save();
+  if (state.shake > 0) {
+    ctx.translate((Math.random() - .5) * 8, (Math.random() - .5) * 8);
+  }
+  drawSky();
+  drawHills();
+  drawRoad();
+  drawScenery();
+  drawPickups();
+  drawObstacles();
+  drawCar();
+  ctx.restore();
+}
+
+function drawSky() {
+  const g = ctx.createLinearGradient(0, 0, 0, groundY);
+  g.addColorStop(0, css('--sky-top'));
+  g.addColorStop(0.42, css('--sky-mid'));
+  g.addColorStop(0.75, css('--sky-low'));
+  g.addColorStop(1, css('--sky-horizon'));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, groundY + 2);
+
+  // sun
+  const sx = W * 0.74, sy = groundY - 78 * scale, r = 54 * scale;
+  ctx.fillStyle = css('--sun');
+  ctx.globalAlpha = 0.95;
+  ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+  // retro sun slats
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = css('--sky-low');
+  for (let i = 0; i < 5; i++) {
+    const y = sy + 8 * scale + i * 11 * scale;
+    ctx.fillRect(sx - r, y, r * 2, (2 + i * 0.9) * scale);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHills() {
+  const draw = (colorVar, amp, off, base) => {
+    ctx.fillStyle = css(colorVar);
+    ctx.beginPath();
+    ctx.moveTo(0, groundY);
+    for (let x = 0; x <= W; x += 12) {
+      const y = base
+        + Math.sin((x + off) * 0.006) * amp
+        + Math.sin((x + off) * 0.013) * amp * 0.45;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W, groundY); ctx.closePath(); ctx.fill();
+  };
+  draw('--hill-far',  26 * scale, state.worldX * 0.06, groundY - 62 * scale);
+  draw('--hill-near', 18 * scale, state.worldX * 0.14, groundY - 30 * scale);
+}
+
+function drawRoad() {
+  ctx.fillStyle = css('--road');
+  ctx.fillRect(0, groundY, W, H - groundY);
+  ctx.fillStyle = css('--road-edge');
+  ctx.fillRect(0, groundY, W, 3 * scale);
+  ctx.fillRect(0, H - 14 * scale, W, 3 * scale);
+
+  // scrolling dashes
+  ctx.fillStyle = css('--dash');
+  const dashW = 34 * scale, gap = 30 * scale, y = groundY + (H - groundY) * 0.46;
+  let x = -((state.worldX * 1.0) % (dashW + gap));
+  while (x < W) { ctx.fillRect(x, y, dashW, 3 * scale); x += dashW + gap; }
+
+  // gravel speckle
+  ctx.fillStyle = 'rgba(255,243,228,.08)';
+  for (let i = 0; i < 40; i++) {
+    const gx = (i * 137 - state.worldX * 1.2) % (W + 40);
+    ctx.fillRect(gx < 0 ? gx + W + 40 : gx, groundY + 8 + (i * 53) % (H - groundY - 16), 2, 2);
+  }
+}
+
+function drawScenery() {
+  for (const s of state.scenery) {
+    const alpha = s.layer === 1 ? 0.35 : 0.7;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = css('--hill-near');
+    const h = s.h * scale, x = s.x, base = groundY;
+    if (s.kind === 'palm') {
+      ctx.fillRect(x, base - h, 4 * scale, h);
+      ctx.beginPath();
+      ctx.ellipse(x + 2 * scale, base - h, 18 * scale, 6 * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillRect(x, base - h * 0.6, 3 * scale, h * 0.6);
+      ctx.fillRect(x - 3 * scale, base - h * 0.6, 9 * scale, 4 * scale);
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawObstacles() {
+  for (const o of state.obstacles) {
+    const s = SPR[o.kind];
+    if (s && s.ready) {
+      blit(s, o.x + o.w / 2, groundY, o.h / scale);
+      continue;
+    }
+    ctx.fillStyle = o.kind === 'cone' ? '#FF8A4C' : '#5B4E72';
+    if (o.kind === 'cone') {
+      ctx.beginPath();
+      ctx.moveTo(o.x + o.w / 2, groundY - o.h);
+      ctx.lineTo(o.x + o.w, groundY);
+      ctx.lineTo(o.x, groundY);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = css('--cream');
+      ctx.fillRect(o.x + 2, groundY - o.h * 0.5, o.w - 4, 4 * scale);
+    } else {
+      ctx.fillRect(o.x, groundY - o.h, o.w, o.h);
+      ctx.fillStyle = '#6E5F88';
+      ctx.fillRect(o.x + 3 * scale, groundY - o.h + 3 * scale, o.w - 10 * scale, 5 * scale);
+    }
+  }
+}
+
+function drawPickups() {
+  for (const p of state.pickups) {
+    const y = p.y + Math.sin(state.t * 3 + p.bob) * 5 * scale;
+    if (p.type === 'polaroid') drawPolaroid(p, p.x, y);
+    else heart(p.x, y, 9 * scale, css('--pink'));
+  }
+}
+
+// a little swinging polaroid with the real photo printed on it
+function drawPolaroid(p, x, y) {
+  const g = GALLERY[p.gi];
+  const s = 30 * scale;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;  // photos should stay smooth even in pixel-land
+  ctx.translate(x, y);
+  ctx.rotate(Math.sin(state.t * 2 + p.bob) * 0.12);
+  ctx.fillStyle = '#FFF7EC';
+  ctx.fillRect(-s / 2, -s / 2, s, s * 1.22);           // frame, deeper at the bottom
+  const inset = s * 0.08, ps = s - inset * 2;
+  if (g.ready) {
+    const iw = g.img.naturalWidth, ih = g.img.naturalHeight;
+    const side = Math.min(iw, ih);                     // centre-crop to a square
+    ctx.drawImage(g.img, (iw - side) / 2, (ih - side) / 2, side, side,
+                  -s / 2 + inset, -s / 2 + inset, ps, ps);
+  } else {
+    ctx.fillStyle = '#D8CBB6';
+    ctx.fillRect(-s / 2 + inset, -s / 2 + inset, ps, ps);
+  }
+  ctx.restore();
+}
+
+function heart(x, y, s, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y + s * 0.7);
+  ctx.bezierCurveTo(x - s * 1.4, y - s * 0.4, x - s * 0.3, y - s * 1.1, x, y - s * 0.35);
+  ctx.bezierCurveTo(x + s * 0.3, y - s * 1.1, x + s * 1.4, y - s * 0.4, x, y + s * 0.7);
+  ctx.fill();
+}
+
+function drawCar() {
+  const c = state.car;
+  const x = W * 0.22, w = 64 * scale, h = 34 * scale;
+  const bounce = c.grounded ? Math.sin(state.t * 26) * 1.1 * scale : 0;
+  const y = groundY + c.y - h + bounce;
+  const cx = x + w / 2;
+  const bottom = groundY + c.y + bounce;
+
+  if (state.invuln > 0 && Math.floor(state.t * 14) % 2 === 0) return;
+
+  ctx.save();
+  ctx.translate(cx, y + h / 2);
+  ctx.rotate(c.tilt);
+  ctx.translate(-cx, -(y + h / 2));
+
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,.28)';
+  ctx.beginPath();
+  ctx.ellipse(cx, groundY + 4 * scale, w * 0.42, 4 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // where the passengers sit, relative to the car
+  const drawPeople = (behind) => {
+    for (const [key, defX, defY] of [['driver', -11, -12], ['passenger', 4, -14]]) {
+      const s = SPR[key];
+      if (!s.ready || !!s.behind !== behind) continue;
+      blit(s, cx + (s.dx ?? defX) * scale, bottom + (s.dy ?? defY) * scale);
+    }
+  };
+
+  drawPeople(true);   // seated behind the bodywork
+
+  // ---- the car itself ----
+  if (SPR.car.ready) {
+    blit(SPR.car, cx + (SPR.car.dx ?? 0) * scale, bottom + (SPR.car.dy ?? 0) * scale);
+  } else {
+    ctx.fillStyle = '#F2557E';
+    roundRect(x, y + h * 0.35, w, h * 0.62, 6 * scale); ctx.fill();
+    ctx.fillStyle = '#FF7BA3';
+    roundRect(x + w * 0.16, y, w * 0.62, h * 0.55, 5 * scale); ctx.fill();
+    ctx.fillStyle = 'rgba(255,243,228,.35)';
+    roundRect(x + w * 0.52, y + h * 0.08, w * 0.24, h * 0.34, 3 * scale); ctx.fill();
+  }
+
+  drawPeople(false);  // drawn over the bodywork, i.e. seen through a window
+
+  // coded heads, used for whichever passenger has no sprite set
+  if (!SPR.driver.ready) drawHead(x + w * 0.30, y - 1 * scale, '#3A2A24', '#F0BE9A');
+  if (!SPR.passenger.ready) drawHead(x + w * 0.47, y - 3 * scale, '#5A2E1E', '#F7CFA9', true);
+
+  // ---- wheels ----
+  const spriteHandlesWheels = SPR.car.ready && SPR.car.includesWheels;
+  if (!spriteHandlesWheels) {
+    const spin = (state.worldX / (10 * scale)) % (Math.PI * 2);
+    const wy = groundY - 6 * scale + c.y + bounce;
+    if (SPR.wheel.ready) {
+      for (const fx of [0.22, 0.78]) {
+        ctx.save();
+        ctx.translate(x + w * fx, wy);
+        ctx.rotate(spin);
+        ctx.translate(-(x + w * fx), -wy);
+        blit(SPR.wheel, x + w * fx, wy + (SPR.wheel.height / 2) * scale);
+        ctx.restore();
+      }
+    } else {
+      wheel(x + w * 0.22, wy, 8 * scale, spin);
+      wheel(x + w * 0.78, wy, 8 * scale, spin);
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawHead(cx, cy, hair, skin, longHair) {
+  const r = 7 * scale;
+  if (longHair) {
+    ctx.fillStyle = hair;
+    roundRect(cx - r * 1.15, cy - r * 0.4, r * 2.3, r * 2.6, r * 0.6); ctx.fill();
+  }
+  ctx.fillStyle = skin;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = hair;
+  ctx.beginPath(); ctx.arc(cx, cy - r * 0.25, r, Math.PI, 0); ctx.fill();
+}
+
+function wheel(cx, cy, r, spin) {
+  ctx.fillStyle = '#1B1428';
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,243,228,.6)';
+  ctx.lineWidth = 2 * scale;
+  ctx.beginPath();
+  ctx.moveTo(cx - Math.cos(spin) * r * 0.6, cy - Math.sin(spin) * r * 0.6);
+  ctx.lineTo(cx + Math.cos(spin) * r * 0.6, cy + Math.sin(spin) * r * 0.6);
+  ctx.stroke();
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+/* ================================================================
+   SCREENS
+   ================================================================ */
+// 1000 reads better as "1 KM" than "1000 METRES"
+function tripLabel() {
+  return TOTAL_M >= 1000
+    ? (TOTAL_M / 1000).toFixed(TOTAL_M % 1000 ? 1 : 0) + ' KM'
+    : TOTAL_M + ' METRES';
+}
+
+function open(html) { card.innerHTML = html; overlay.classList.add('show'); }
+function close() { overlay.classList.remove('show'); }
+
+/* ---------- lightbox: tap any photo to see it big ---------- */
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = lightbox.querySelector('img');
+lightbox.addEventListener('click', () => lightbox.classList.remove('show'));
+card.addEventListener('click', e => {
+  const img = e.target.closest('.photo img, .shot img');
+  if (!img) return;
+  lightboxImg.src = img.src;
+  lightbox.classList.add('show');
+});
+
+function albumHTML() {
+  return `<div class="album">` + GALLERY.map((g, i) =>
+    state.album.has(i)
+      ? `<button class="shot" type="button"><img src="${g.src}" alt="Album photo ${i + 1}"></button>`
+      : `<div class="shot locked">?</div>`
+  ).join('') + `</div>`;
+}
+
+function photoBlock(stop) {
+  if (stop.photo) {
+    return `<div class="photo"><img src="${stop.photo}" alt="${stop.name}"
+              onerror="this.parentNode.innerHTML='&lt;span&gt;PHOTO NOT FOUND<br>${stop.photo}&lt;/span&gt;'"></div>`;
+  }
+  return `<div class="photo"><span>ADD A PHOTO HERE<br>${stop.name.toUpperCase()}</span></div>`;
+}
+
+function title() {
+  state.mode = 'title';
+  open(`
+    <div class="center">
+      <p class="eyebrow">GIRLFRIENDS' DAY EDITION · ${tripLabel()} · ${STOPS.length} STOPS</p>
+      <h1>OUR ROAD TRIP</h1>
+      <p>Happy Girlfriends' Day! Drive from the day we met to right now — the whole story, one kilometre, five stops.</p>
+      <button class="action" id="go">Start the engine</button>
+    </div>`);
+  document.getElementById('go').onclick = () => howToPlay();
+}
+
+function howToPlay() {
+  state.mode = 'howto';
+  open(`
+    <p class="eyebrow">BEFORE YOU DRIVE</p>
+    <h2>Rules of the road</h2>
+    <div class="rules">
+      <div class="rule"><span class="ico">🚗</span><span><b>Tap the screen</b> (or press <b>space</b>) to jump. Hop over the barriers and street signs — hitting one costs a heart.</span></div>
+      <div class="rule"><span class="ico">♥</span><span>You have <b>3 hearts</b>. Lose them all and the car breaks down — but your progress is safe. Collect floating hearts to earn lives back.</span></div>
+      <div class="rule"><span class="ico">📷</span><span><b>Catch the flying polaroids!</b> Every photo you grab goes into our album on the final screen. There are ${GALLERY.length} to find.</span></div>
+      <div class="rule"><span class="ico">🛑</span><span>At every stop there's a memory and a <b>checkpoint question</b>. Answer honestly. It is absolutely a test of love.</span></div>
+    </div>
+    <button class="action" id="drive">Let's drive</button>`);
+  document.getElementById('drive').onclick = () => startDriving(true);
+}
+
+function startDriving(resetSpeed) {
+  close();
+  state.mode = 'driving';
+  state.obstacles = [];
+  state.pickups = [];
+  // speed carries over between landmarks so the trip builds; only a crash
+  // or a fresh start knocks it back down
+  if (resetSpeed === true) state.speed = START_SPEED;
+  state.lastSpawn = 0;
+  last = performance.now();
+}
+
+function showStop(i) {
+  state.mode = 'stop';
+  const s = STOPS[i];
+  open(`
+    <p class="eyebrow">STOP ${String(i + 1).padStart(2, '0')} · ${(i + 1) * STOP_EVERY} M</p>
+    <h2>${s.name}</h2>
+    ${photoBlock(s)}
+    <p class="caption">${s.caption}</p>
+    <button class="action" id="next">Checkpoint question</button>`);
+  document.getElementById('next').onclick = () => showQuiz(i);
+}
+
+function showQuiz(i) {
+  state.mode = 'quiz';
+  const s = STOPS[i];
+  open(`
+    <p class="eyebrow">TOLL BOOTH</p>
+    <h2>${s.question}</h2>
+    <div class="choices" id="choices">
+      ${s.options.map((o, k) => `<button class="choice" data-k="${k}">${o}</button>`).join('')}
+    </div>
+    <p class="nudge" id="nudge"></p>`);
+
+  const nudge = document.getElementById('nudge');
+  document.querySelectorAll('.choice').forEach(btn => {
+    btn.onclick = () => {
+      const k = +btn.dataset.k;
+      const right = Array.isArray(s.answer) ? s.answer.includes(k) : k === s.answer;
+      if (right) {
+        btn.classList.add('right');
+        nudge.textContent = s.reply;
+        document.querySelectorAll('.choice').forEach(b => b.disabled = true);
+        setTimeout(() => {
+          state.stopIndex++;
+          updateHud();
+          if (state.stopIndex >= STOPS.length) finale();
+          else startDriving();
+        }, 1400);
+      } else {
+        btn.classList.add('wrong');
+        btn.disabled = true;
+        nudge.textContent = (s.wrongs && s.wrongs[k]) || "Not quite. Think harder — this is a test of love.";
+      }
+    };
+  });
+}
+
+function breakdown() {
+  state.mode = 'stop';
+  open(`
+    <div class="center">
+      <p class="eyebrow">BREAKDOWN</p>
+      <h2>The car gave up.</h2>
+      <p>You didn't, though. Back to the last stop — your progress is safe.</p>
+      <button class="action" id="again">Restart the engine</button>
+    </div>`);
+  document.getElementById('again').onclick = () => {
+    state.lives = 3;
+    state.worldX = state.stopIndex * STOP_EVERY * PX_PER_M;
+    updateHud();
+    startDriving(true);
+  };
+}
+
+function finale() {
+  state.mode = 'finale';
+  const found = state.album.size, total = GALLERY.length;
+  open(`
+    <div class="center">
+      <p class="eyebrow">${tripLabel()} · ${state.hearts} HEARTS · ${found}/${total} PHOTOS</p>
+      <h1>${FINALE.title}</h1>
+      <p>${FINALE.body}</p>
+      ${albumHTML()}
+      <p class="hint">${found < total ? 'SOME PHOTOS GOT AWAY — DRIVE AGAIN FOR A FRESH RUN' : 'ALBUM COMPLETE — TAP A PHOTO TO RELIVE IT'}</p>
+      <button class="action" id="poem">${FINALE.poemButton} 💌</button>
+      <button class="action secondary" id="replay">${FINALE.signoff}</button>
+    </div>`);
+  document.getElementById('poem').onclick = () => showPoem();
+  document.getElementById('replay').onclick = () => {
+    // a full fresh trip: road, lives, hearts and the album all reset
+    state.worldX = 0; state.stopIndex = 0; state.lives = 3;
+    state.hearts = 0; state.heartBank = 0; state.album = new Set();
+    seedScenery(); updateHud(); startDriving(true);
+  };
+}
+
+function showPoem() {
+  state.mode = 'finale';
+  open(`
+    <div class="center">
+      <p class="eyebrow">A POEM, BECAUSE YOU DESERVE ONE</p>
+      <h2>${POEM.title}</h2>
+      <div class="poem">
+        ${POEM.stanzas.map(st => `<p>${st.join('<br>')}</p>`).join('')}
+      </div>
+      <button class="action" id="back">Back to the end of the road</button>
+    </div>`);
+  document.getElementById('back').onclick = () => finale();
+}
+
+updateHud();
+title();
+</script>
+</body>
+</html>
